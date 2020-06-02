@@ -3,18 +3,19 @@ package com.github.sasgovor.gpblsample.helpers
 import android.app.Activity
 import android.content.Context
 import com.android.billingclient.api.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 class GPBLHelper(context: Context, listener: PurchasesUpdatedListener) {
 
     val billingClient = BillingClient.newBuilder(context).setListener(listener).build()
 
-    fun startConnectionToGP() {
-        billingClient.startConnection(
-            object : BillingClientStateListener {
+    suspend fun <T> startConnectionToGP() =
+        suspendCoroutine<T> { continuation ->
+            val result = object : BillingClientStateListener {
                 override fun onBillingSetupFinished(billingResult: BillingResult) {
                     if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                        continuation.resume(billingResult as T)
 //                       queryPurchases(BillingClient.SkuType.INAPP)
 //                       queryPurchases(BillingClient.SkuType.SUBS)
 //                       handle bought purchases
@@ -24,10 +25,11 @@ class GPBLHelper(context: Context, listener: PurchasesUpdatedListener) {
                 override fun onBillingServiceDisconnected() {
                     billingClient.startConnection(this)
                 }
-            })
-    }
+            }
+            billingClient.startConnection(result)
+        }
 
-    suspend fun querySkuDetailsAsync(
+    suspend fun <T> querySkuDetailsAsync(
         skuList: ArrayList<String>,
         skuType: String
     ): Map<String, SkuDetails> {
@@ -35,12 +37,13 @@ class GPBLHelper(context: Context, listener: PurchasesUpdatedListener) {
         val params = SkuDetailsParams.newBuilder()
         params.setSkusList(skuList).setType(skuType)
 
-        withContext(Dispatchers.IO) {
-            billingClient.querySkuDetailsAsync(params.build(), object : SkuDetailsResponseListener {
+        suspendCoroutine<T> { continuation ->
+            val result = object : SkuDetailsResponseListener {
                 override fun onSkuDetailsResponse(
                     billingResult: BillingResult?,
                     skusDetails: MutableList<SkuDetails>?
                 ) {
+                    continuation.resume(billingResult as T) // ?????????????
                     if (billingResult?.responseCode == BillingClient.BillingResponseCode.OK && skusDetails != null) {
                         for (skuDetails in skusDetails) {
 //                          getting data about purchases
@@ -52,9 +55,9 @@ class GPBLHelper(context: Context, listener: PurchasesUpdatedListener) {
                         }
                     }
                 }
-            })
+            }
+            billingClient.querySkuDetailsAsync(params.build(), result)
         }
-
         return skuDetailsMap
     }
 
